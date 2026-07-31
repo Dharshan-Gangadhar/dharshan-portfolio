@@ -10,8 +10,12 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Initialize Resend
-const resend = new Resend(process.env.RESEND_API_KEy);
+// 🔐 Fix #1: Required for Rate Limiting to work on Render/Heroku/Vercel
+// Without this, Render's proxy IP is used, and ALL users share the same rate limit!
+app.set("trust proxy", 1);
+
+// Fix #2: Fixed the typo (RESEND_API_KEY)
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // 🔐 Security Headers
 app.use(helmet());
@@ -33,7 +37,8 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
-app.use(express.json());
+// 🔐 Fix #3: Limit payload size to 10kb to prevent Denial of Service (DoS) memory crashes
+app.use(express.json({ limit: "10kb" }));
 
 // Health check
 app.get("/", (req, res) => {
@@ -47,6 +52,14 @@ app.post("/contact", async (req, res) => {
   // Basic validation
   if (!name || !email || !message) {
     return res.status(400).json({ error: "All fields are required" });
+  }
+
+  // 🔐 Fix #4: Input Length Validation (Prevents massive payload spam)
+  if (name.length > 100 || email.length > 100) {
+    return res.status(400).json({ error: "Name or email is too long" });
+  }
+  if (message.length > 5000) {
+    return res.status(400).json({ error: "Message exceeds maximum length of 5000 characters" });
   }
 
   // Basic email format validation
@@ -84,4 +97,3 @@ ${message}
 app.listen(PORT, () => {
   console.log(`Backend running on port ${PORT}`);
 });
-
