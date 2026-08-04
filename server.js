@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 5000;
 app.set("trust proxy", 1);
 
 // Prevents app crash if key is missing during startup
-const apiKey = process.env.RESEND_API_KEY;
+const apiKey = process.env.RESEND_API_KEy;
 if (!apiKey) {
   console.warn("⚠️ RESEND_API_KEY is not defined in environment variables!");
 }
