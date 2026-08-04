@@ -10,17 +10,17 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// 🔐 Fix #1: Required for Rate Limiting to work on Render/Heroku/Vercel
-// Without this, Render's proxy IP is used, and ALL users share the same rate limit!
 app.set("trust proxy", 1);
 
-// Fix #2: Fixed the typo (RESEND_API_KEY)
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Prevents app crash if key is missing during startup
+const apiKey = process.env.RESEND_API_KEY;
+if (!apiKey) {
+  console.warn("⚠️ RESEND_API_KEY is not defined in environment variables!");
+}
+const resend = new Resend(apiKey || "placeholder_key");
 
-// 🔐 Security Headers
 app.use(helmet());
 
-// 🔐 Restrict CORS (VERY IMPORTANT)
 app.use(
   cors({
     origin: "https://dharshan-portfolio-psi.vercel.app",
@@ -28,33 +28,26 @@ app.use(
   })
 );
 
-// 🔐 Rate Limiting (Prevents spam)
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 30, // 30 requests per IP
+  windowMs: 15 * 60 * 1000,
+  max: 30,
   message: { error: "Too many requests. Please try again later." },
 });
 
 app.use(limiter);
-
-// 🔐 Fix #3: Limit payload size to 10kb to prevent Denial of Service (DoS) memory crashes
 app.use(express.json({ limit: "10kb" }));
 
-// Health check
 app.get("/", (req, res) => {
   res.send("Backend is live 🚀");
 });
 
-// Contact route
 app.post("/contact", async (req, res) => {
   const { name, email, message } = req.body;
 
-  // Basic validation
   if (!name || !email || !message) {
     return res.status(400).json({ error: "All fields are required" });
   }
 
-  // 🔐 Fix #4: Input Length Validation (Prevents massive payload spam)
   if (name.length > 100 || email.length > 100) {
     return res.status(400).json({ error: "Name or email is too long" });
   }
@@ -62,7 +55,6 @@ app.post("/contact", async (req, res) => {
     return res.status(400).json({ error: "Message exceeds maximum length of 5000 characters" });
   }
 
-  // Basic email format validation
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
     return res.status(400).json({ error: "Invalid email format" });
@@ -73,21 +65,14 @@ app.post("/contact", async (req, res) => {
       from: "Portfolio <onboarding@resend.dev>",
       to: process.env.EMAIL,
       subject: `Portfolio Contact from ${name}`,
-      reply_to: email,
-      text: `
-Name: ${name}
-Email: ${email}
-
-Message:
-${message}
-      `,
+      replyTo: email, // Fixed: camelCase for Resend v2+
+      text: `Name: ${name}\nEmail: ${email}\n\nMessage:\n${message}`,
     });
 
     res.status(200).json({
       success: true,
       message: "Email sent successfully",
     });
-
   } catch (error) {
     console.error("Resend error:", error);
     res.status(500).json({ error: "Failed to send email" });
